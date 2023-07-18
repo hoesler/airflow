@@ -26,7 +26,7 @@ from airflow.exceptions import AirflowProviderDeprecationWarning
 from airflow.providers.microsoft.azure.hooks.base_azure import AzureBaseHook
 
 
-class AzureContainerInstanceHook(AzureBaseHook):
+class AzureContainerInstanceHook(AzureBaseHook[ContainerInstanceManagementClient]):
     """
     A hook to communicate with Azure Container Instances.
 
@@ -46,10 +46,13 @@ class AzureContainerInstanceHook(AzureBaseHook):
     hook_name = "Azure Container Instance"
 
     def __init__(self, azure_conn_id: str = default_conn_name) -> None:
-        super().__init__(sdk_client=ContainerInstanceManagementClient, conn_id=azure_conn_id)
-        self.connection = self.get_conn()
+        super().__init__(
+            sdk_client=ContainerInstanceManagementClient, conn_id=azure_conn_id
+        )
 
-    def create_or_update(self, resource_group: str, name: str, container_group: ContainerGroup) -> None:
+    def create_or_update(
+        self, resource_group: str, name: str, container_group: ContainerGroup
+    ) -> None:
         """
         Create a new container group.
 
@@ -57,7 +60,11 @@ class AzureContainerInstanceHook(AzureBaseHook):
         :param name: the name of the container group
         :param container_group: the properties of the container group
         """
-        self.connection.container_groups.create_or_update(resource_group, name, container_group)
+
+        with self.get_conn() as connection:
+            connection.container_groups.create_or_update(
+                resource_group, name, container_group
+            )
 
     def get_state_exitcode_details(self, resource_group: str, name: str) -> tuple:
         """
@@ -102,7 +109,8 @@ class AzureContainerInstanceHook(AzureBaseHook):
         :param name: the name of the container group
         :return: ContainerGroup
         """
-        return self.connection.container_groups.get(resource_group, name, raw=False)
+        with self.get_conn() as connection:
+            return connection.container_groups.get(resource_group, name, raw=False)
 
     def get_logs(self, resource_group: str, name: str, tail: int = 1000) -> list:
         """
@@ -113,8 +121,11 @@ class AzureContainerInstanceHook(AzureBaseHook):
         :param tail: the size of the tail
         :return: A list of log messages
         """
-        logs = self.connection.container.list_logs(resource_group, name, name, tail=tail)
-        return logs.content.splitlines(True)
+        with self.get_conn() as connection:
+            logs = connection.containers.list_logs(
+                resource_group, name, name, tail=tail
+            )
+            return logs.content.splitlines(True)
 
     def delete(self, resource_group: str, name: str) -> None:
         """
@@ -123,7 +134,8 @@ class AzureContainerInstanceHook(AzureBaseHook):
         :param resource_group: the name of the resource group
         :param name: the name of the container group
         """
-        self.connection.container_groups.delete(resource_group, name)
+        with self.get_conn() as connection:
+            connection.container_groups.delete(resource_group, name)
 
     def exists(self, resource_group: str, name: str) -> bool:
         """
@@ -132,18 +144,23 @@ class AzureContainerInstanceHook(AzureBaseHook):
         :param resource_group: the name of the resource group
         :param name: the name of the container group
         """
-        for container in self.connection.container_groups.list_by_resource_group(resource_group):
-            if container.name == name:
-                return True
-        return False
+        with self.get_conn() as connection:
+            for container in connection.container_groups.list_by_resource_group(
+                resource_group
+            ):
+                if container.name == name:
+                    return True
+            return False
 
     def test_connection(self):
         """Test a configured Azure Container Instance connection."""
         try:
             # Attempt to list existing container groups under the configured subscription and retrieve the
             # first in the returned iterator. We need to _actually_ try to retrieve an object to properly
-            # test the connection.
-            next(self.connection.container_groups.list(), None)
+            # tes
+            # with self.get_conn() as connection:t the connection.
+            with self.get_conn() as connection:
+                next(connection.container_groups.list(), None)
         except Exception as e:
             return False, str(e)
 
